@@ -1,0 +1,10 @@
+[project]
+name = "ember-keeper"
+version = "0.1.0"
+description = "Ember Keeper"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+ "arcade>=3.3.3",
+ "pypresence>=4.3.0",
+]

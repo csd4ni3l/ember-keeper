@@ -1,0 +1,1 @@
+Ember Keeper is a platformer 2D game where you have to escape the outside temperatures, while collecting firewood to keep yourself warm while being out in the open.
