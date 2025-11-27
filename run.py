@@ -19,7 +19,7 @@ from arcade.experimental.controller_window import ControllerWindow
 
 sys.excepthook = on_exception
 
-__builtins__.print = lambda *args, **kwargs: logging.debug(" ".join(map(str, args)))
+# __builtins__.print = lambda *args, **kwargs: logging.debug(" ".join(map(str, args)))
 
 if not log_dir in os.listdir():
     os.makedirs(log_dir)

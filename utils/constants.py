@@ -3,6 +3,12 @@ from arcade.types import Color
 from arcade.gui.widgets.buttons import UITextureButtonStyle, UIFlatButtonStyle
 from arcade.gui.widgets.slider import UISliderStyle
 
+FOLLOW_DECAY_CONST = 0.3
+GRAVITY = 1.5
+PLAYER_MOVEMENT_SPEED = 10
+PLAYER_JUMP_SPEED = 28
+GRID_PIXEL_SIZE = 70
+
 menu_background_color = (30, 30, 47)
 log_dir = 'logs'
 discord_presence_id = 1443616900096590027
