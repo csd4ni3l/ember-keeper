@@ -15,8 +15,20 @@ class Game(arcade.gui.UIView):
         self.anchor = self.add_widget(arcade.gui.UIAnchorLayout(size_hint=(1, 1)))
 
         self.scene = self.create_scene()
-        self.spawn_position = tile_map.object_lists["spawn"][0].shape
 
+        self.right_left_diagonal_sprites = [
+            sprite for sprite in self.scene["ice"]
+            if hasattr(sprite, 'properties') and 
+            sprite.properties.get('tile_id') == RIGHT_LEFT_DIAGONAL_ID
+        ]
+
+        self.left_right_diagonal_sprites = [
+            sprite for sprite in self.scene["ice"] 
+            if hasattr(sprite, 'properties') and 
+            sprite.properties.get('tile_id') == LEFT_RIGHT_DIAGONAL_ID
+        ]
+
+        self.spawn_position = tile_map.object_lists["spawn"][0].shape
         player_x, player_y = self.spawn_position
 
         self.player = arcade.TextureAnimationSprite(animation=player_still_animation, center_x=player_x, center_y=player_y)
@@ -27,10 +39,18 @@ class Game(arcade.gui.UIView):
         )
 
         self.warmth = 100
-
         self.direction = "right"
+        self.last_jump = time.perf_counter()
+        self.start = time.perf_counter()
+        self.trees = 0
+        self.collected_trees = []
 
-        self.scene.add_sprite("Player", self.player)
+        self.level_texts = []
+
+        for tile in tile_map.object_lists["text"]:
+            self.level_texts.append(arcade.Text(tile.name, tile.shape[0], tile.shape[1], font_size=14))
+            self.level_texts[-1].original_text = tile.name
+            self.level_texts[-1].change_to_when_hit = tile.properties.get("change_to_when_hit")
 
         with open("settings.json", "r") as file:
             self.settings = json.load(file)
@@ -49,20 +69,7 @@ class Game(arcade.gui.UIView):
         else:
             self.no_highscore = False
 
-        self.last_jump = time.perf_counter()
-        self.start = time.perf_counter()
-
-        self.right_left_diagonal_sprites = [
-            sprite for sprite in self.scene["ice"]
-            if hasattr(sprite, 'properties') and 
-            sprite.properties.get('tile_id') == RIGHT_LEFT_DIAGONAL_ID
-        ]
-
-        self.left_right_diagonal_sprites = [
-            sprite for sprite in self.scene["ice"] 
-            if hasattr(sprite, 'properties') and 
-            sprite.properties.get('tile_id') == LEFT_RIGHT_DIAGONAL_ID
-        ]
+        self.scene.add_sprite("Player", self.player)
 
         if self.settings.get("sfx", True):        
             self.freeze_player = freeze_sound.play(loop=True, volume=self.settings.get("sfx_volume", 100) / 100)
@@ -73,14 +80,30 @@ class Game(arcade.gui.UIView):
     def on_show_view(self):
         super().on_show_view()
 
-        self.info_label = self.anchor.add(arcade.gui.UILabel(text=f"Time took: 0s High Score: {self.high_score}s Tries: {self.tries}", font_size=20), anchor_x="center", anchor_y="top")
+        self.info_label = self.anchor.add(arcade.gui.UILabel(text=f"Time took: 0s High Score: {self.high_score}s Trees: 0 Tries: {self.tries}", font_size=20), anchor_x="center", anchor_y="top")
 
-    def reset(self):
+    def reset(self, reached_end=False):
         self.warmth = 100
+        self.trees = 0
         self.player.change_x, self.player.change_y = 0, 0
         self.player.position = self.spawn_position
         self.start = time.perf_counter()
         self.tries += 1
+
+        for collected_tree in self.collected_trees:
+            self.scene["trees"].append(collected_tree)
+
+        for level_text in self.level_texts:
+            level_text.text = level_text.original_text
+
+        self.collected_trees = []
+
+        if not reached_end and self.no_highscore:
+            self.high_score = 9999
+        elif reached_end and self.no_highscore:
+            self.no_highscore = False
+
+        self.update_data_file()
 
     def create_scene(self) -> arcade.Scene:
         self.camera_bounds = arcade.LRBT(
@@ -97,6 +120,9 @@ class Game(arcade.gui.UIView):
 
         with self.camera_sprites.activate():
             self.scene.draw()
+
+            for level_text in self.level_texts:
+                level_text.draw()
 
         self.ui.draw()
         arcade.draw_lbwh_rectangle_filled(self.window.width / 4, 0, (self.window.width / 2), self.window.height / 20, arcade.color.SKY_BLUE)
@@ -128,14 +154,23 @@ class Game(arcade.gui.UIView):
         if self.no_highscore:
             self.high_score = round(time.perf_counter() - self.start, 2)
 
-        self.info_label.text = f"Time took: {round(time.perf_counter() - self.start, 2)}s High Score: {self.high_score}s Tries: {self.tries}"
+        self.info_label.text = f"Time took: {round(time.perf_counter() - self.start, 2)}s High Score: {self.high_score}s Trees: {self.trees} Tries: {self.tries}"
 
         if self.warmth <= 0 or self.player.collides_with_list(self.scene["spikes"]) or self.player.center_x < 0 or self.player.center_x > tile_map.width * GRID_PIXEL_SIZE or self.player.center_y < 0:
             self.reset()
 
-        ice_touch = any([ice_sprite in hit_list for ice_sprite in self.scene["ice"]]) and self.physics_engine.can_jump()
+        tree_collisions = self.player.collides_with_list(self.scene["trees"])
+
+        if tree_collisions:
+            for tree in tree_collisions:
+                self.trees += 1
+                self.collected_trees.append(tree)
+                self.scene["trees"].remove(tree)
+
+                self.warmth = self.clamp(self.warmth + 35, 0, 100)
 
         moved = False
+        ice_touch = any([ice_sprite in hit_list for ice_sprite in self.scene["ice"]]) and self.physics_engine.can_jump()
 
         if self.window.keyboard[arcade.key.UP] or self.window.keyboard[arcade.key.SPACE]:
             if time.perf_counter() - self.last_jump >= PLAYER_JUMP_COOLDOWN and self.physics_engine.can_jump():
@@ -158,40 +193,53 @@ class Game(arcade.gui.UIView):
                 on_right_left_diagonal = any([True for hit in hit_list if hit in self.right_left_diagonal_sprites])
 
                 if on_left_right_diagonal or (self.direction == "right" and not on_right_left_diagonal):
-                    self.player.change_x = self.clamp(self.player.change_x * 0.75, PLAYER_MOVEMENT_SPEED * 0.25, PLAYER_MOVEMENT_SPEED)
+                    self.player.change_x = self.clamp(self.player.change_x * 0.75, PLAYER_MOVEMENT_SPEED * 0.4, PLAYER_MOVEMENT_SPEED)
                 else:
-                    self.player.change_x = self.clamp(self.player.change_x * 0.75, -PLAYER_MOVEMENT_SPEED, -PLAYER_MOVEMENT_SPEED * 0.25)
+                    self.player.change_x = self.clamp(self.player.change_x * 0.75, -PLAYER_MOVEMENT_SPEED, -PLAYER_MOVEMENT_SPEED * 0.4)
             else:
                 self.player.change_x = 0
             
         if moved and ice_touch:
-            self.player.change_x *= 1.2
+            self.player.change_x *= 1.5
 
-        if abs(self.player.rect.distance_from_bounds(self.spawn_position)) > GRID_PIXEL_SIZE * 5:
+        self.warmth = self.clamp(self.warmth - 0.15, 0, 100)
+
+        if self.warmth < 40:
             if self.settings.get("sfx", True) and not self.freeze_player.playing:
                 self.freeze_player.play()
-            self.warmth = self.clamp(self.warmth - 0.1, 0, 100)
         else:
             if self.settings.get("sfx", True):
                 self.freeze_player.pause()
-            self.warmth = self.clamp(self.warmth + 0.05, 0, 100)
 
         if self.player.change_y > 0:
             self.change_player_animation(player_jump_animation)
-        elif abs(self.player.change_x) > PLAYER_MOVEMENT_SPEED * 0.25:
+        elif abs(self.player.change_x) > PLAYER_MOVEMENT_SPEED * 0.4:
             self.change_player_animation(player_walk_animation)
         else:
             self.change_player_animation(player_still_animation)
 
+        for level_text in self.level_texts:
+            if level_text.change_to_when_hit and self.player.rect.intersection(level_text.rect):
+                level_text.text = level_text.change_to_when_hit
+
+        if self.player.collides_with_list(self.scene["end"]):
+            end_time = round(time.perf_counter() - self.start, 2)
+
+            if end_time < self.high_score:
+                self.high_score = end_time
+
+            self.reset(True)
+
         self.player.update_animation()
+
+    def update_data_file(self):
+        with open("data.json", "w") as file:
+            file.write(json.dumps({
+                "high_score": self.high_score,
+                "tries": self.tries
+            }, indent=4))
 
     def on_key_press(self, symbol, modifiers):
         if symbol == arcade.key.ESCAPE:
-            with open("data.json", "w") as file:
-                file.write(json.dumps({
-                    "high_score": self.high_score,
-                    "tries": self.tries
-                }, indent=4))
-
             from menus.main import Main
             self.window.show_view(Main(self.pypresence_client))
