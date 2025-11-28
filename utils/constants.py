@@ -5,9 +5,13 @@ from arcade.gui.widgets.slider import UISliderStyle
 
 FOLLOW_DECAY_CONST = 0.3
 GRAVITY = 1.5
+PLAYER_JUMP_COOLDOWN = 0.25
 PLAYER_MOVEMENT_SPEED = 10
 PLAYER_JUMP_SPEED = 28
 GRID_PIXEL_SIZE = 70
+
+LEFT_RIGHT_DIAGONAL_ID = 6
+RIGHT_LEFT_DIAGONAL_ID = 7
 
 menu_background_color = (30, 30, 47)
 log_dir = 'logs'
