@@ -1,6 +1,6 @@
 import arcade, arcade.gui, json, time, os
 
-from utils.constants import FOLLOW_DECAY_CONST, GRAVITY, PLAYER_MOVEMENT_SPEED, PLAYER_JUMP_SPEED, GRID_PIXEL_SIZE, PLAYER_JUMP_COOLDOWN, LEFT_RIGHT_DIAGONAL_ID, RIGHT_LEFT_DIAGONAL_ID
+from utils.constants import FOLLOW_DECAY_CONST, GRAVITY, PLAYER_MOVEMENT_SPEED, PLAYER_JUMP_SPEED, GRID_PIXEL_SIZE, PLAYER_JUMP_COOLDOWN, LEFT_RIGHT_DIAGONAL_ID, RIGHT_LEFT_DIAGONAL_ID, AVAILABLE_LEVELS
 from utils.preload import tilemaps, player_still_animation, player_jump_animation, player_walk_animation, freeze_sound, background_sound
 
 class Game(arcade.gui.UIView):
@@ -61,7 +61,14 @@ class Game(arcade.gui.UIView):
             with open("data.json", "r") as file:
                 self.data = json.load(file)
         else:
-            self.data = {}
+            self.data = {
+                f"{level_num}_high_score": 9999
+                for level_num in range(AVAILABLE_LEVELS)
+            }
+            self.data.update({
+                f"{level_num}_tries": 0
+                for level_num in range(AVAILABLE_LEVELS)
+            })
 
         self.high_score = self.data.get("high_score", 9999)
         self.tries = self.data.get("tries", 1)
@@ -238,8 +245,8 @@ class Game(arcade.gui.UIView):
     def update_data_file(self):
         with open("data.json", "w") as file:
             file.write(json.dumps({
-                "high_score": self.high_score,
-                "tries": self.tries
+                f"{self.level_num}_high_score": self.high_score,
+                f"{self.level_num}_tries": self.tries
             }, indent=4))
 
     def on_key_press(self, symbol, modifiers):

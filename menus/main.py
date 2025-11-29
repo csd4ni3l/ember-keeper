@@ -55,8 +55,15 @@ class Main(arcade.gui.UIView):
         self.play_button = self.box.add(arcade.gui.UITextureButton(text="Play", texture=button_texture, texture_hovered=button_hovered_texture, width=self.window.width / 2, height=self.window.height / 10, style=big_button_style))
         self.play_button.on_click = lambda event: self.play()
 
+        self.statistics_button = self.box.add(arcade.gui.UITextureButton(text="Statistics", texture=button_texture, texture_hovered=button_hovered_texture, width=self.window.width / 2, height=self.window.height / 10, style=big_button_style))
+        self.statistics_button.on_click = lambda event: self.statistics()
+
         self.settings_button = self.box.add(arcade.gui.UITextureButton(text="Settings", texture=button_texture, texture_hovered=button_hovered_texture, width=self.window.width / 2, height=self.window.height / 10, style=big_button_style))
         self.settings_button.on_click = lambda event: self.settings()
+
+    def statistics(self):
+        from menus.statistics import Statistics
+        self.window.show_view(Statistics(self.pypresence_client))
 
     def play(self):
         from menus.level_selector import LevelSelector
