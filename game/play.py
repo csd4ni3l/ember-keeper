@@ -46,6 +46,7 @@ class Game(arcade.gui.UIView):
         self.start = time.perf_counter()
         self.trees = 0
         self.collected_trees = []
+        self.checkpoints_hit = set()
 
         self.level_texts = []
 
@@ -177,15 +178,18 @@ class Game(arcade.gui.UIView):
         if self.warmth <= 0 or self.player.collides_with_list(self.scene["spikes"]) or self.player.center_x < 0 or self.player.center_x > tilemaps[self.level_num].width * GRID_PIXEL_SIZE or self.player.center_y < 0:
             self.reset()
 
-        tree_collisions = self.player.collides_with_list(self.scene["trees"])
+        for tree in self.player.collides_with_list(self.scene["trees"]):
+            self.trees += 1
+            self.collected_trees.append(tree)
+            self.scene["trees"].remove(tree)
 
-        if tree_collisions:
-            for tree in tree_collisions:
-                self.trees += 1
-                self.collected_trees.append(tree)
-                self.scene["trees"].remove(tree)
+            self.warmth = self.clamp(self.warmth + 35, 0, 100)
 
-                self.warmth = self.clamp(self.warmth + 35, 0, 100)
+        for checkpoint in self.player.collides_with_list(self.scene["checkpoints"]):
+            if checkpoint not in self.checkpoints_hit:
+                self.scene["checkpoints"].remove(checkpoint)
+                self.checkpoints_hit.add(checkpoint)
+                self.spawn_position = checkpoint.position
 
         moved = False
         ice_touch = any([ice_sprite in hit_list for ice_sprite in self.scene["ice"]]) and self.physics_engine.can_jump()
