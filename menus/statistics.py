@@ -41,11 +41,11 @@ class Statistics(arcade.gui.UIView):
         for level_num in range(AVAILABLE_LEVELS):
             self.box.add(arcade.gui.UILabel(f"Level {level_num + 1}", font_size=32))
             self.box.add(arcade.gui.UILabel(f"High Score: {self.data[f'{level_num}_high_score']}", font_size=24))
-            self.box.add(arcade.gui.UILabel(f"Tries: {self.data[f'{level_num}_tries']}", font_size=24))
+            self.box.add(arcade.gui.UILabel(f"Tries: 1", font_size=24))
             self.box.add(arcade.gui.UISpace(height=self.window.height / 15))
 
         self.box.add(arcade.gui.UILabel(f"Total", font_size=32))
-        self.box.add(arcade.gui.UILabel(f"Total Tries: {self.total_tries}", font_size=24))
+        self.box.add(arcade.gui.UILabel(f"Total Tries: 1", font_size=24))
 
     def main_exit(self):
         from menus.main import Main

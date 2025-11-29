@@ -89,7 +89,7 @@ class Game(arcade.gui.UIView):
     def on_show_view(self):
         super().on_show_view()
 
-        self.info_label = self.anchor.add(arcade.gui.UILabel(text=f"Time took: 0s High Score: {self.high_score}s Trees: 0 Tries: {self.tries}", font_size=20), anchor_x="center", anchor_y="top")
+        self.info_label = self.anchor.add(arcade.gui.UILabel(text=f"Time took: 0s High Score: {self.high_score}s Trees: 0", font_size=20), anchor_x="center", anchor_y="top")
 
     def reset(self, reached_end=False):
         self.warmth = 100
@@ -174,7 +174,7 @@ class Game(arcade.gui.UIView):
 
         self.info_label.text = f"Time took: {round(time.perf_counter() - self.start, 2)}s High Score: {self.high_score}s Trees: {self.trees} Tries: {self.tries}"
 
-        if self.warmth <= 0 or self.player.collides_with_list(self.scene["spikes"]) or self.player.center_x < 0 or self.player.center_x > tilemaps[self.level_num].width * GRID_PIXEL_SIZE or self.player.center_y < 0:
+        if self.warmth <= 0 or self.player.center_x < 0 or self.player.center_x > tilemaps[self.level_num].width * GRID_PIXEL_SIZE or self.player.center_y < 0:
             self.reset()
 
         tree_collisions = self.player.collides_with_list(self.scene["trees"])
@@ -188,7 +188,7 @@ class Game(arcade.gui.UIView):
                 self.warmth = self.clamp(self.warmth + 35, 0, 100)
 
         moved = False
-        ice_touch = any([ice_sprite in hit_list for ice_sprite in self.scene["ice"]]) and self.physics_engine.can_jump()
+        ice_touch = False#any([ice_sprite in hit_list for ice_sprite in self.scene["ice"]]) and self.physics_engine.can_jump()
 
         if self.window.keyboard[arcade.key.UP] or self.window.keyboard[arcade.key.SPACE]:
             if time.perf_counter() - self.last_jump >= PLAYER_JUMP_COOLDOWN and self.physics_engine.can_jump():
