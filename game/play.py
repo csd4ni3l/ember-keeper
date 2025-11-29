@@ -1,10 +1,10 @@
 import arcade, arcade.gui, json, time, os
 
 from utils.constants import FOLLOW_DECAY_CONST, GRAVITY, PLAYER_MOVEMENT_SPEED, PLAYER_JUMP_SPEED, GRID_PIXEL_SIZE, PLAYER_JUMP_COOLDOWN, LEFT_RIGHT_DIAGONAL_ID, RIGHT_LEFT_DIAGONAL_ID
-from utils.preload import tile_map, player_still_animation, player_jump_animation, player_walk_animation, freeze_sound, background_sound
+from utils.preload import tilemaps, player_still_animation, player_jump_animation, player_walk_animation, freeze_sound, background_sound
 
 class Game(arcade.gui.UIView):
-    def __init__(self, pypresence_client):
+    def __init__(self, pypresence_client, level_num):
         super().__init__()
 
         self.pypresence_client = pypresence_client
@@ -13,6 +13,8 @@ class Game(arcade.gui.UIView):
         self.camera_sprites = arcade.Camera2D()
         self.camera_bounds = self.window.rect
         self.anchor = self.add_widget(arcade.gui.UIAnchorLayout(size_hint=(1, 1)))
+
+        self.level_num = level_num
 
         self.scene = self.create_scene()
 
@@ -28,7 +30,7 @@ class Game(arcade.gui.UIView):
             sprite.properties.get('tile_id') == LEFT_RIGHT_DIAGONAL_ID
         ]
 
-        self.spawn_position = tile_map.object_lists["spawn"][0].shape
+        self.spawn_position = tilemaps[self.level_num].object_lists["spawn"][0].shape
         player_x, player_y = self.spawn_position
 
         self.player = arcade.TextureAnimationSprite(animation=player_still_animation, center_x=player_x, center_y=player_y)
@@ -47,7 +49,7 @@ class Game(arcade.gui.UIView):
 
         self.level_texts = []
 
-        for tile in tile_map.object_lists["text"]:
+        for tile in tilemaps[self.level_num].object_lists["text"]:
             self.level_texts.append(arcade.Text(tile.name, tile.shape[0], tile.shape[1], font_size=14))
             self.level_texts[-1].original_text = tile.name
             self.level_texts[-1].change_to_when_hit = tile.properties.get("change_to_when_hit")
@@ -108,12 +110,12 @@ class Game(arcade.gui.UIView):
     def create_scene(self) -> arcade.Scene:
         self.camera_bounds = arcade.LRBT(
             self.window.width/2.0,
-            tile_map.width * GRID_PIXEL_SIZE - self.window.width/2.0,
+            tilemaps[self.level_num].width * GRID_PIXEL_SIZE - self.window.width/2.0,
             self.window.height/2.0,
-            tile_map.height * GRID_PIXEL_SIZE
+            tilemaps[self.level_num].height * GRID_PIXEL_SIZE
         )
 
-        return arcade.Scene.from_tilemap(tile_map)
+        return arcade.Scene.from_tilemap(tilemaps[self.level_num])
 
     def on_draw(self):
         self.clear()
@@ -151,12 +153,21 @@ class Game(arcade.gui.UIView):
         hit_list = self.physics_engine.update()
         self.center_camera_to_player()
 
+        if self.player.collides_with_list(self.scene["end"]):
+            end_time = round(time.perf_counter() - self.start, 2)
+            
+            if self.no_highscore or end_time < self.high_score:
+                self.high_score = end_time
+            
+            self.reset(True)
+            return
+
         if self.no_highscore:
             self.high_score = round(time.perf_counter() - self.start, 2)
 
         self.info_label.text = f"Time took: {round(time.perf_counter() - self.start, 2)}s High Score: {self.high_score}s Trees: {self.trees} Tries: {self.tries}"
 
-        if self.warmth <= 0 or self.player.collides_with_list(self.scene["spikes"]) or self.player.center_x < 0 or self.player.center_x > tile_map.width * GRID_PIXEL_SIZE or self.player.center_y < 0:
+        if self.warmth <= 0 or self.player.collides_with_list(self.scene["spikes"]) or self.player.center_x < 0 or self.player.center_x > tilemaps[self.level_num].width * GRID_PIXEL_SIZE or self.player.center_y < 0:
             self.reset()
 
         tree_collisions = self.player.collides_with_list(self.scene["trees"])
@@ -221,14 +232,6 @@ class Game(arcade.gui.UIView):
         for level_text in self.level_texts:
             if level_text.change_to_when_hit and self.player.rect.intersection(level_text.rect):
                 level_text.text = level_text.change_to_when_hit
-
-        if self.player.collides_with_list(self.scene["end"]):
-            end_time = round(time.perf_counter() - self.start, 2)
-
-            if end_time < self.high_score:
-                self.high_score = end_time
-
-            self.reset(True)
 
         self.player.update_animation()
 

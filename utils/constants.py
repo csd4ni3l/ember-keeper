@@ -13,6 +13,8 @@ GRID_PIXEL_SIZE = 70
 LEFT_RIGHT_DIAGONAL_ID = 6
 RIGHT_LEFT_DIAGONAL_ID = 7
 
+AVAILABLE_LEVELS = 1
+
 menu_background_color = (30, 30, 47)
 log_dir = 'logs'
 discord_presence_id = 1443616900096590027
