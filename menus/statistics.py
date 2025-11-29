@@ -20,10 +20,13 @@ class Statistics(arcade.gui.UIView):
                 f"{level_num}_best_time": 9999
                 for level_num in range(AVAILABLE_LEVELS)
             }
+            
             self.data.update({
                 f"{level_num}_tries": 0
                 for level_num in range(AVAILABLE_LEVELS)
             })
+
+            self.data["replays"] = []
 
         self.total_tries = sum([self.data[f"{level_num}_tries"] for level_num in range(AVAILABLE_LEVELS)])
 

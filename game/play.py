@@ -1,6 +1,6 @@
 import arcade, arcade.gui, json, time, os
 
-from utils.constants import FOLLOW_DECAY_CONST, GRAVITY, PLAYER_MOVEMENT_SPEED, PLAYER_JUMP_SPEED, GRID_PIXEL_SIZE, PLAYER_JUMP_COOLDOWN, LEFT_RIGHT_DIAGONAL_ID, RIGHT_LEFT_DIAGONAL_ID, AVAILABLE_LEVELS, RESTART_DELAY, button_style
+from utils.constants import FOLLOW_DECAY_CONST, GRAVITY, PLAYER_MOVEMENT_SPEED, PLAYER_JUMP_SPEED, GRID_PIXEL_SIZE, PLAYER_JUMP_COOLDOWN, LEFT_RIGHT_DIAGONAL_ID, RIGHT_LEFT_DIAGONAL_ID, AVAILABLE_LEVELS, RESTART_DELAY, button_style, REPLAY_DELAY
 from utils.preload import tilemaps, player_still_animation, player_jump_animation, player_walk_animation, freeze_sound, background_sound, button_texture, button_hovered_texture
 
 class Game(arcade.gui.UIView):
@@ -49,14 +49,21 @@ class Game(arcade.gui.UIView):
         )
 
         self.warmth = 50
+        self.trees = 0
         self.direction = "right"
+
         self.last_jump = time.perf_counter()
         self.start = time.perf_counter()
-        self.trees = 0
-        self.collected_trees = []
-        self.checkpoints_hit = set()
         self.restart_start = time.perf_counter()
+
+        self.checkpoints_hit = set()
+        self.collected_trees = []
+
+        self.current_replay_data = []
+        self.last_replay_snapshot = time.perf_counter()
+
         self.restarting = False
+
         self.won = False
         self.won_time = None
 
@@ -83,6 +90,8 @@ class Game(arcade.gui.UIView):
                 for level_num in range(AVAILABLE_LEVELS)
             })
 
+            self.data["replays"] = []
+
         self.best_time = self.data.get(f"{self.level_num}_best_time", 9999)
         self.tries = self.data.get("tries", 1)
         if self.best_time == 9999:
@@ -92,6 +101,16 @@ class Game(arcade.gui.UIView):
             self.no_besttime = False
 
         self.scene.add_sprite("Player", self.player)
+
+        self.replays = self.data.get("replays", []) if self.settings.get("replays", True) else None
+        self.replay_players = []
+        self.replay_index = 0
+
+        if self.replays:
+            for n, replay in enumerate(self.replays):
+                self.replay_players.append(arcade.TextureAnimationSprite(animation=player_still_animation, center_x=replay[0][0], center_y=replay[0][1], alpha=128))
+                self.replay_players[-1].color = arcade.color.GRAY
+                self.scene.add_sprite(f"ReplayPlayer{n}", self.replay_players[-1])
 
         if self.settings.get("sfx", True):        
             self.freeze_player = freeze_sound.play(loop=True, volume=self.settings.get("sfx_volume", 100) / 100)
@@ -304,12 +323,40 @@ class Game(arcade.gui.UIView):
 
         self.player.update_animation()
 
+        if time.perf_counter() - self.last_replay_snapshot >= REPLAY_DELAY:
+            self.last_replay_snapshot = time.perf_counter()
+            self.current_replay_data.append([self.player.center_x, self.player.center_y])
+
+            if self.replays:
+                replays_to_remove = []
+                self.replay_index += 1
+                
+                for n, replay in enumerate(self.replays):
+                    if replay is None:
+                        continue
+
+                    if self.replay_index < len(replay):
+                        self.replay_players[n].center_x, self.replay_players[n].center_y = replay[self.replay_index]
+                    else:
+                        replays_to_remove.append(n)
+
+                for replay_to_remove in replays_to_remove:
+                    self.replays[replay_to_remove] = None
+                    self.scene[f"ReplayPlayer{replay_to_remove}"].remove(self.replay_players[replay_to_remove])
+                    self.scene.remove_sprite_list_by_name(f"ReplayPlayer{replay_to_remove}")
+
     def update_data_file(self):
         with open("data.json", "w") as file:
-            file.write(json.dumps({
+            data_dict = self.data.copy()
+
+            data_dict.update({
                 f"{self.level_num}_best_time": self.best_time,
                 f"{self.level_num}_tries": self.tries
-            }, indent=4))
+            })
+            
+            data_dict["replays"].append(self.current_replay_data)
+
+            file.write(json.dumps(data_dict, indent=4))
 
     def on_key_press(self, symbol, modifiers):
         if symbol == arcade.key.ESCAPE:

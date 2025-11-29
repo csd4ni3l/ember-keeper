@@ -11,6 +11,8 @@ PLAYER_JUMP_SPEED = 28
 GRID_PIXEL_SIZE = 70
 RESTART_DELAY = 0.1
 
+REPLAY_DELAY = 1 / 20
+
 LEFT_RIGHT_DIAGONAL_ID = 6
 RIGHT_LEFT_DIAGONAL_ID = 7
 
@@ -46,6 +48,7 @@ settings = {
     "Miscellaneous": {
         "Discord RPC": {"type": "bool", "config_key": "discord_rpc", "default": True},
         "Hitboxes": {"type": "bool", "config_key": "hitboxes", "default": False},
+        "Replays": {"type": "bool", "config_key": "replays", "default": True},
     },
     "Credits": {}
 }
