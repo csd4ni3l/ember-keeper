@@ -1,7 +1,7 @@
 import arcade, arcade.gui, json, time, os
 
-from utils.constants import FOLLOW_DECAY_CONST, GRAVITY, PLAYER_MOVEMENT_SPEED, PLAYER_JUMP_SPEED, GRID_PIXEL_SIZE, PLAYER_JUMP_COOLDOWN, LEFT_RIGHT_DIAGONAL_ID, RIGHT_LEFT_DIAGONAL_ID, AVAILABLE_LEVELS
-from utils.preload import tilemaps, player_still_animation, player_jump_animation, player_walk_animation, freeze_sound, background_sound
+from utils.constants import FOLLOW_DECAY_CONST, GRAVITY, PLAYER_MOVEMENT_SPEED, PLAYER_JUMP_SPEED, GRID_PIXEL_SIZE, PLAYER_JUMP_COOLDOWN, LEFT_RIGHT_DIAGONAL_ID, RIGHT_LEFT_DIAGONAL_ID, AVAILABLE_LEVELS, RESTART_DELAY, button_style
+from utils.preload import tilemaps, player_still_animation, player_jump_animation, player_walk_animation, freeze_sound, background_sound, button_texture, button_hovered_texture
 
 class Game(arcade.gui.UIView):
     def __init__(self, pypresence_client, level_num):
@@ -40,13 +40,16 @@ class Game(arcade.gui.UIView):
             walls=[self.scene["walls"], self.scene["ice"]]
         )
 
-        self.warmth = 100
+        self.warmth = 50
         self.direction = "right"
         self.last_jump = time.perf_counter()
         self.start = time.perf_counter()
         self.trees = 0
         self.collected_trees = []
         self.checkpoints_hit = set()
+        self.restart_start = time.perf_counter()
+        self.restarting = False
+        self.won = False
 
         self.level_texts = []
 
@@ -63,7 +66,7 @@ class Game(arcade.gui.UIView):
                 self.data = json.load(file)
         else:
             self.data = {
-                f"{level_num}_high_score": 9999
+                f"{level_num}_best_time": 9999
                 for level_num in range(AVAILABLE_LEVELS)
             }
             self.data.update({
@@ -71,13 +74,13 @@ class Game(arcade.gui.UIView):
                 for level_num in range(AVAILABLE_LEVELS)
             })
 
-        self.high_score = self.data.get("high_score", 9999)
+        self.best_time = self.data.get("best_time", 9999)
         self.tries = self.data.get("tries", 1)
-        if self.high_score == 9999:
-            self.no_highscore = True
-            self.high_score = 0
+        if self.best_time == 9999:
+            self.no_besttime = True
+            self.best_time = 0
         else:
-            self.no_highscore = False
+            self.no_besttime = False
 
         self.scene.add_sprite("Player", self.player)
 
@@ -90,28 +93,41 @@ class Game(arcade.gui.UIView):
     def on_show_view(self):
         super().on_show_view()
 
-        self.info_label = self.anchor.add(arcade.gui.UILabel(text=f"Time took: 0s High Score: {self.high_score}s Trees: 0 Tries: {self.tries}", font_size=20), anchor_x="center", anchor_y="top")
+        self.info_label = self.anchor.add(arcade.gui.UILabel(text=f"Time took: 0s Best Time: {self.best_time}s Trees: 0 Tries: {self.tries}", font_size=20), anchor_x="center", anchor_y="top")
 
     def reset(self, reached_end=False):
-        self.warmth = 100
-        self.trees = 0
-        self.player.change_x, self.player.change_y = 0, 0
-        self.player.position = self.spawn_position
-        self.start = time.perf_counter()
-        self.tries += 1
+        if not reached_end:
+            self.warmth = 50
+            self.trees = 0
+            
+            self.player.change_x, self.player.change_y = 0, 0
+            self.player.position = self.spawn_position
+            
+            self.tries += 1
+            
+            self.restart_start = time.perf_counter()
+            self.restarting = True
 
-        for collected_tree in self.collected_trees:
-            self.scene["trees"].append(collected_tree)
+            if self.no_besttime:
+                self.best_time = 9999
+            
+        else:
+            if self.no_besttime:
+                self.no_besttime = False
+
+            self.anchor.add(arcade.gui.UILabel(text=f"Level Complete! Time: {round(time.perf_counter() - self.start, 2)}s\nBest Time: {self.best_time}", multiline=True, font_size=30), anchor_x="center", anchor_y="center")
+            
+            self.back_button = arcade.gui.UITextureButton(texture=button_texture, texture_hovered=button_hovered_texture, text='<--', style=button_style, width=100, height=50)
+            self.back_button.on_click = lambda event: self.main_exit()
+            self.anchor.add(self.back_button, anchor_x="left", anchor_y="top", align_x=10, align_y=-10)
+            
+            self.won = True
+
+        if not self.checkpoints_hit:
+            self.start = time.perf_counter()
 
         for level_text in self.level_texts:
             level_text.text = level_text.original_text
-
-        self.collected_trees = []
-
-        if not reached_end and self.no_highscore:
-            self.high_score = 9999
-        elif reached_end and self.no_highscore:
-            self.no_highscore = False
 
         self.update_data_file()
 
@@ -128,15 +144,17 @@ class Game(arcade.gui.UIView):
     def on_draw(self):
         self.clear()
 
-        with self.camera_sprites.activate():
-            self.scene.draw()
+        if not self.won:
+            with self.camera_sprites.activate():
+                self.scene.draw()
 
-            for level_text in self.level_texts:
-                level_text.draw()
+                for level_text in self.level_texts:
+                    level_text.draw()
+
+            arcade.draw_lbwh_rectangle_filled(self.window.width / 4, 0, (self.window.width / 2), self.window.height / 20, arcade.color.SKY_BLUE)
+            arcade.draw_lbwh_rectangle_filled(self.window.width / 4, 0, (self.window.width / 2) * (self.warmth / 100), self.window.height / 20, arcade.color.RED)
 
         self.ui.draw()
-        arcade.draw_lbwh_rectangle_filled(self.window.width / 4, 0, (self.window.width / 2), self.window.height / 20, arcade.color.SKY_BLUE)
-        arcade.draw_lbwh_rectangle_filled(self.window.width / 4, 0, (self.window.width / 2) * (self.warmth / 100), self.window.height / 20, arcade.color.RED)
 
     def center_camera_to_player(self):
         self.camera_sprites.position = arcade.math.smerp_2d(
@@ -158,25 +176,40 @@ class Game(arcade.gui.UIView):
             self.player.animation = animation
 
     def on_update(self, delta_time: float):
+        if self.won:
+            return
+
+        if self.restarting:
+            if time.perf_counter() - self.restart_start >= RESTART_DELAY:
+                self.restarting = False
+            else:
+                return
+        
         hit_list = self.physics_engine.update()
         self.center_camera_to_player()
 
         if self.player.collides_with_list(self.scene["end"]):
             end_time = round(time.perf_counter() - self.start, 2)
             
-            if self.no_highscore or end_time < self.high_score:
-                self.high_score = end_time
+            if self.no_besttime or end_time < self.best_time:
+                self.best_time = end_time
             
             self.reset(True)
             return
 
-        if self.no_highscore:
-            self.high_score = round(time.perf_counter() - self.start, 2)
+        if self.no_besttime:
+            self.best_time = round(time.perf_counter() - self.start, 2)
 
-        self.info_label.text = f"Time took: {round(time.perf_counter() - self.start, 2)}s High Score: {self.high_score}s Trees: {self.trees} Tries: {self.tries}"
+        self.info_label.text = f"Time took: {round(time.perf_counter() - self.start, 2)}s Best Time: {self.best_time}s Trees: {self.trees} Tries: {self.tries}"
 
-        if self.warmth <= 0 or self.player.collides_with_list(self.scene["spikes"]) or self.player.center_x < 0 or self.player.center_x > tilemaps[self.level_num].width * GRID_PIXEL_SIZE or self.player.center_y < 0:
+        if self.warmth <= 0 or self.player.collides_with_list(self.scene["spikes"]) or self.player.center_y < 0:
             self.reset()
+
+        if self.player.center_x + self.player.width / 2 < 0:
+            self.player.center_x = self.player.width / 2
+
+        if self.player.center_x - self.player.width / 2 > tilemaps[self.level_num].width * GRID_PIXEL_SIZE:
+            self.player.center_x = (tilemaps[self.level_num].width * GRID_PIXEL_SIZE) - self.player.width / 2
 
         for tree in self.player.collides_with_list(self.scene["trees"]):
             self.trees += 1
@@ -189,7 +222,7 @@ class Game(arcade.gui.UIView):
             if checkpoint not in self.checkpoints_hit:
                 self.scene["checkpoints"].remove(checkpoint)
                 self.checkpoints_hit.add(checkpoint)
-                self.spawn_position = checkpoint.position
+                self.spawn_position = checkpoint.position + arcade.math.Vec2(-GRID_PIXEL_SIZE / 8, GRID_PIXEL_SIZE / 2)
 
         moved = False
         ice_touch = any([ice_sprite in hit_list for ice_sprite in self.scene["ice"]]) and self.physics_engine.can_jump()
@@ -249,11 +282,14 @@ class Game(arcade.gui.UIView):
     def update_data_file(self):
         with open("data.json", "w") as file:
             file.write(json.dumps({
-                f"{self.level_num}_high_score": self.high_score,
+                f"{self.level_num}_best_time": self.best_time,
                 f"{self.level_num}_tries": self.tries
             }, indent=4))
 
     def on_key_press(self, symbol, modifiers):
         if symbol == arcade.key.ESCAPE:
-            from menus.main import Main
-            self.window.show_view(Main(self.pypresence_client))
+            self.main_exit()
+
+    def main_exit(self):
+        from menus.main import Main
+        self.window.show_view(Main(self.pypresence_client))
