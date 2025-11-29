@@ -102,9 +102,9 @@ class Game(arcade.gui.UIView):
 
         self.scene.add_sprite("Player", self.player)
 
-        self.replays = self.data.get("replays", []) if self.settings.get("replays", True) else None
+        self.replays = self.data.get("replays", []).copy() if self.settings.get("replays", True) else []
         self.replay_players = []
-        self.replay_index = 0
+        self.replay_indices = [0] * len(self.replays)
 
         if self.replays:
             for n, replay in enumerate(self.replays):
@@ -329,23 +329,25 @@ class Game(arcade.gui.UIView):
 
             if self.replays:
                 replays_to_remove = []
-                self.replay_index += 1
-                
+
                 for n, replay in enumerate(self.replays):
                     if replay is None:
                         continue
 
-                    if self.replay_index < len(replay):
-                        self.replay_players[n].center_x, self.replay_players[n].center_y = replay[self.replay_index]
+                    self.replay_indices[n] += 1
+
+                    if self.replay_indices[n] < len(replay):
+                        self.replay_players[n].center_x, self.replay_players[n].center_y = replay[self.replay_indices[n]]
                     else:
                         replays_to_remove.append(n)
 
                 for replay_to_remove in replays_to_remove:
                     self.replays[replay_to_remove] = None
-                    self.scene[f"ReplayPlayer{replay_to_remove}"].remove(self.replay_players[replay_to_remove])
-                    self.scene.remove_sprite_list_by_name(f"ReplayPlayer{replay_to_remove}")
+                    self.replay_players[replay_to_remove] = None
+                    if f"ReplayPlayer{replay_to_remove}" in self.scene._name_mapping:
+                        self.scene.remove_sprite_list_by_name(f"ReplayPlayer{replay_to_remove}")
 
-    def update_data_file(self):
+    def update_data_file(self, with_replay=False):
         with open("data.json", "w") as file:
             data_dict = self.data.copy()
 
@@ -354,7 +356,9 @@ class Game(arcade.gui.UIView):
                 f"{self.level_num}_tries": self.tries
             })
             
-            data_dict["replays"].append(self.current_replay_data)
+            if with_replay:
+                if self.current_replay_data:
+                    data_dict["replays"].append(self.current_replay_data)
 
             file.write(json.dumps(data_dict, indent=4))
 
@@ -363,5 +367,6 @@ class Game(arcade.gui.UIView):
             self.main_exit()
 
     def main_exit(self):
+        self.update_data_file(with_replay=True)
         from menus.main import Main
         self.window.show_view(Main(self.pypresence_client))
