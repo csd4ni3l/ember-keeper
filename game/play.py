@@ -40,6 +40,14 @@ class Game(arcade.gui.UIView):
             walls=[self.scene["walls"], self.scene["ice"]]
         )
 
+        self.camera_shake = arcade.camera.grips.ScreenShake2D(
+            self.camera_sprites.view_data,
+            max_amplitude=5,
+            acceleration_duration=0.2,
+            falloff_time=0.3,
+            shake_frequency=10.0,                                                      
+        )
+
         self.warmth = 50
         self.direction = "right"
         self.last_jump = time.perf_counter()
@@ -50,6 +58,7 @@ class Game(arcade.gui.UIView):
         self.restart_start = time.perf_counter()
         self.restarting = False
         self.won = False
+        self.won_time = None
 
         self.level_texts = []
 
@@ -74,7 +83,7 @@ class Game(arcade.gui.UIView):
                 for level_num in range(AVAILABLE_LEVELS)
             })
 
-        self.best_time = self.data.get("best_time", 9999)
+        self.best_time = self.data.get(f"{self.level_num}_best_time", 9999)
         self.tries = self.data.get("tries", 1)
         if self.best_time == 9999:
             self.no_besttime = True
@@ -96,6 +105,8 @@ class Game(arcade.gui.UIView):
         self.info_label = self.anchor.add(arcade.gui.UILabel(text=f"Time took: 0s Best Time: {self.best_time}s Trees: 0 Tries: {self.tries}", font_size=20), anchor_x="center", anchor_y="top")
 
     def reset(self, reached_end=False):
+        self.camera_shake.start()
+        
         if not reached_end:
             self.warmth = 50
             self.trees = 0
@@ -115,7 +126,7 @@ class Game(arcade.gui.UIView):
             if self.no_besttime:
                 self.no_besttime = False
 
-            self.anchor.add(arcade.gui.UILabel(text=f"Level Complete! Time: {round(time.perf_counter() - self.start, 2)}s\nBest Time: {self.best_time}", multiline=True, font_size=30), anchor_x="center", anchor_y="center")
+            self.anchor.add(arcade.gui.UILabel(text=f"Level Complete! Time: {self.won_time}s\nBest Time: {self.best_time}s", multiline=True, font_size=30), anchor_x="center", anchor_y="center")
             
             self.back_button = arcade.gui.UITextureButton(texture=button_texture, texture_hovered=button_hovered_texture, text='<--', style=button_style, width=100, height=50)
             self.back_button.on_click = lambda event: self.main_exit()
@@ -144,15 +155,22 @@ class Game(arcade.gui.UIView):
     def on_draw(self):
         self.clear()
 
+        self.camera_shake.update_camera()
+
         if not self.won:
             with self.camera_sprites.activate():
                 self.scene.draw()
+
+                if self.settings.get("hitboxes", False):
+                    self.scene.draw_hit_boxes(arcade.color.RED, 2)
 
                 for level_text in self.level_texts:
                     level_text.draw()
 
             arcade.draw_lbwh_rectangle_filled(self.window.width / 4, 0, (self.window.width / 2), self.window.height / 20, arcade.color.SKY_BLUE)
             arcade.draw_lbwh_rectangle_filled(self.window.width / 4, 0, (self.window.width / 2) * (self.warmth / 100), self.window.height / 20, arcade.color.RED)
+
+        self.camera_shake.readjust_camera()
 
         self.ui.draw()
 
@@ -187,28 +205,33 @@ class Game(arcade.gui.UIView):
         
         hit_list = self.physics_engine.update()
         self.center_camera_to_player()
+        self.camera_shake.update(delta_time)
 
         if self.player.collides_with_list(self.scene["end"]):
-            end_time = round(time.perf_counter() - self.start, 2)
+            end_time = round(time.perf_counter() - self.start, 4)
             
             if self.no_besttime or end_time < self.best_time:
                 self.best_time = end_time
+
+            self.won_time = end_time
             
             self.reset(True)
             return
 
         if self.no_besttime:
-            self.best_time = round(time.perf_counter() - self.start, 2)
+            self.best_time = round(time.perf_counter() - self.start, 4)
 
-        self.info_label.text = f"Time took: {round(time.perf_counter() - self.start, 2)}s Best Time: {self.best_time}s Trees: {self.trees} Tries: {self.tries}"
+        self.info_label.text = f"Time took: {round(time.perf_counter() - self.start, 4)}s Best Time: {self.best_time}s Trees: {self.trees} Tries: {self.tries}"
 
         if self.warmth <= 0 or self.player.collides_with_list(self.scene["spikes"]) or self.player.center_y < 0:
             self.reset()
 
         if self.player.center_x + self.player.width / 2 < 0:
+            self.camera_shake.start()
             self.player.center_x = self.player.width / 2
 
         if self.player.center_x - self.player.width / 2 > tilemaps[self.level_num].width * GRID_PIXEL_SIZE:
+            self.camera_shake.start()
             self.player.center_x = (tilemaps[self.level_num].width * GRID_PIXEL_SIZE) - self.player.width / 2
 
         for tree in self.player.collides_with_list(self.scene["trees"]):
@@ -222,7 +245,7 @@ class Game(arcade.gui.UIView):
             if checkpoint not in self.checkpoints_hit:
                 self.scene["checkpoints"].remove(checkpoint)
                 self.checkpoints_hit.add(checkpoint)
-                self.spawn_position = checkpoint.position + arcade.math.Vec2(-GRID_PIXEL_SIZE / 8, GRID_PIXEL_SIZE / 2)
+                self.spawn_position = checkpoint.position + arcade.math.Vec2(-GRID_PIXEL_SIZE / 4, GRID_PIXEL_SIZE)
 
         moved = False
         ice_touch = any([ice_sprite in hit_list for ice_sprite in self.scene["ice"]]) and self.physics_engine.can_jump()
@@ -248,9 +271,9 @@ class Game(arcade.gui.UIView):
                 on_right_left_diagonal = any([True for hit in hit_list if hit in self.right_left_diagonal_sprites])
 
                 if on_left_right_diagonal or (self.direction == "right" and not on_right_left_diagonal):
-                    self.player.change_x = self.clamp(self.player.change_x * 0.75, PLAYER_MOVEMENT_SPEED * 0.4, PLAYER_MOVEMENT_SPEED)
+                    self.player.change_x = self.clamp(self.player.change_x * 0.75, PLAYER_MOVEMENT_SPEED * 0.3, PLAYER_MOVEMENT_SPEED)
                 else:
-                    self.player.change_x = self.clamp(self.player.change_x * 0.75, -PLAYER_MOVEMENT_SPEED, -PLAYER_MOVEMENT_SPEED * 0.4)
+                    self.player.change_x = self.clamp(self.player.change_x * 0.75, -PLAYER_MOVEMENT_SPEED, -PLAYER_MOVEMENT_SPEED * 0.3)
             else:
                 self.player.change_x = 0
             
@@ -260,6 +283,7 @@ class Game(arcade.gui.UIView):
         self.warmth = self.clamp(self.warmth - 0.15, 0, 100)
 
         if self.warmth < 40:
+            self.camera_shake.start()
             if self.settings.get("sfx", True) and not self.freeze_player.playing:
                 self.freeze_player.play()
         else:
@@ -268,13 +292,14 @@ class Game(arcade.gui.UIView):
 
         if self.player.change_y > 0:
             self.change_player_animation(player_jump_animation)
-        elif abs(self.player.change_x) > PLAYER_MOVEMENT_SPEED * 0.4:
+        elif abs(self.player.change_x) > PLAYER_MOVEMENT_SPEED * 0.3:
             self.change_player_animation(player_walk_animation)
         else:
             self.change_player_animation(player_still_animation)
 
         for level_text in self.level_texts:
             if level_text.change_to_when_hit and self.player.rect.intersection(level_text.rect):
+                self.camera_shake.start()
                 level_text.text = level_text.change_to_when_hit
 
         self.player.update_animation()

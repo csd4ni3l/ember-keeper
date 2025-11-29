@@ -147,22 +147,8 @@ class Settings(arcade.gui.UIView):
                 width, height = map(int, self.settings_dict['resolution'].split('x'))
                 self.window.set_size(width, height)
 
-            if self.settings_dict['vsync']:
-                self.window.set_vsync(True)
-                display_mode = self.window.display.get_default_screen().get_mode()
-                refresh_rate = display_mode.rate
-                self.window.set_update_rate(1 / refresh_rate)
-                self.window.set_draw_rate(1 / refresh_rate)
-
-            elif not self.settings_dict['fps_limit'] == 0:
-                self.window.set_vsync(False)
-                self.window.set_update_rate(1 / self.settings_dict['fps_limit'])
-                self.window.set_draw_rate(1 / self.settings_dict['fps_limit'])
-
-            else:
-                self.window.set_vsync(False)
-                self.window.set_update_rate(1 / 99999999)
-                self.window.set_draw_rate(1 / 99999999)
+            self.window.set_update_rate(1 / 60)
+            self.window.set_draw_rate(1 / 60)
 
             if self.settings_dict['discord_rpc']:
                 if isinstance(self.pypresence_client, FakePyPresence): # the user has enabled RPC in the settings in this session.
