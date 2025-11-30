@@ -1,6 +1,6 @@
-import arcade, arcade.gui, json, time, os
+import arcade, arcade.gui, json, time, os, random
 
-from utils.constants import FOLLOW_DECAY_CONST, GRAVITY, PLAYER_MOVEMENT_SPEED, PLAYER_JUMP_SPEED, GRID_PIXEL_SIZE, PLAYER_JUMP_COOLDOWN, LEFT_RIGHT_DIAGONAL_ID, RIGHT_LEFT_DIAGONAL_ID, AVAILABLE_LEVELS, RESTART_DELAY, button_style, REPLAY_DELAY, menu_background_color
+from utils.constants import FOLLOW_DECAY_CONST, GRAVITY, PLAYER_MOVEMENT_SPEED, PLAYER_JUMP_SPEED, GRID_PIXEL_SIZE, PLAYER_JUMP_COOLDOWN, LEFT_RIGHT_DIAGONAL_ID, RIGHT_LEFT_DIAGONAL_ID, AVAILABLE_LEVELS, RESTART_DELAY, button_style, REPLAY_DELAY, menu_background_color, SNOWFLAKE_SPAWN_DELAY
 from utils.preload import tilemaps, player_still_animation, player_jump_animation, player_walk_animation, freeze_sound, background_sound, button_texture, button_hovered_texture
 
 class Game(arcade.gui.UIView):
@@ -57,6 +57,7 @@ class Game(arcade.gui.UIView):
         self.start = time.perf_counter()
         self.restart_start = time.perf_counter()
         self.last_camera_shake = time.perf_counter()
+        self.last_snowflake_spawn = time.perf_counter()
 
         self.checkpoints_hit = set()
         self.collected_trees = []
@@ -88,15 +89,21 @@ class Game(arcade.gui.UIView):
                 self.data = json.load(file)
         else:
             self.data = {
-                f"{level_num}_best_time": 9999
-                for level_num in range(AVAILABLE_LEVELS)
+                f"{level_num + 1}_best_time": 9999
+                for level_num + 1 in range(AVAILABLE_LEVELS)
             }
             self.data.update({
-                f"{level_num}_tries": 0
-                for level_num in range(AVAILABLE_LEVELS)
+                f"{level_num + 1}_tries": 0
+                for level_num + 1 in range(AVAILABLE_LEVELS)
             })
 
-            self.data["best_replay"] = []
+            self.data.update({
+                f"{level_num + 1}_best_replay": []
+                for level_num + 1 in range(AVAILABLE_LEVELS)
+            })
+
+        if self.settings.get("snowflakes", True):
+            self.snowflakes = arcade.SpriteList()
 
         self.best_time = self.data.get(f"{self.level_num}_best_time", 9999)
         self.tries = self.data.get("tries", 1)
@@ -108,7 +115,7 @@ class Game(arcade.gui.UIView):
 
         self.scene.add_sprite("Player", self.player)
 
-        self.best_replay = self.data.get("best_replay", []).copy() if self.settings.get("replays", True) else []
+        self.best_replay = self.data.get(f"{self.level_num}_best_replay", []).copy() if self.settings.get("replays", True) else []
         self.replay_index = 0
 
         if self.best_replay:
@@ -121,6 +128,9 @@ class Game(arcade.gui.UIView):
             self.freeze_player.pause()
 
             self.background_player = background_sound.play(loop=True, volume=self.settings.get("sfx_volume", 100) / 100)
+
+        for falling_spike in self.scene["falling_spikes"]:
+            falling_spike.original_y = falling_spike.center_y
 
         for x_moving_wall in self.scene["x_moving_walls"]:
             x_moving_wall.x_movement = 0
@@ -151,7 +161,6 @@ class Game(arcade.gui.UIView):
             self.checkpoints_hit = set()
             self.collected_trees = []
 
-            self.current_replay_data = []
             self.last_replay_snapshot = time.perf_counter()
 
             self.restarting = False
@@ -164,6 +173,8 @@ class Game(arcade.gui.UIView):
             self.player.position = self.spawn_position
             self.player.change_x, self.player.change_y = 0, 0
 
+            self.current_replay_data = []
+            self.replay_index = 0
             return
 
         self.shake_camera()
@@ -183,9 +194,15 @@ class Game(arcade.gui.UIView):
             if self.no_besttime:
                 self.best_time = 9999
             
+            self.update_data_file()
+
         else:
             if self.no_besttime:
                 self.no_besttime = False
+
+            self.anchor.remove(self.info_label)
+
+            arcade.set_background_color(menu_background_color)
 
             self.anchor.add(arcade.gui.UILabel(text=f"Level Complete!\nTime: {self.won_time}s\nBest Time: {self.best_time}s", multiline=True, font_size=30), anchor_x="center", anchor_y="center")
             
@@ -194,6 +211,10 @@ class Game(arcade.gui.UIView):
             self.anchor.add(self.back_button, anchor_x="left", anchor_y="top", align_x=10, align_y=-10)
             
             self.won = True
+
+        for falling_spike in self.scene["falling_spikes"]:
+            falling_spike.change_y = 0
+            falling_spike.center_y = falling_spike.original_y
 
         if not self.checkpoints_hit:
             self.start = time.perf_counter()
@@ -205,8 +226,6 @@ class Game(arcade.gui.UIView):
             self.scene["trees"].append(tree)
 
         self.collected_trees = []
-
-        self.update_data_file()
 
     def create_scene(self) -> arcade.Scene:
         self.camera_bounds = arcade.LRBT(
@@ -221,9 +240,12 @@ class Game(arcade.gui.UIView):
     def on_draw(self):
         self.clear()
 
-        self.camera_shake.update_camera()
-
         if not self.won:
+            if self.settings.get("snowflakes", True):
+                self.snowflakes.draw()
+
+            self.camera_shake.update_camera()
+            
             with self.camera_sprites.activate():
                 self.scene.draw()
 
@@ -233,10 +255,16 @@ class Game(arcade.gui.UIView):
                 for level_text in self.level_texts:
                     level_text.draw()
 
+                if self.settings.get("replays", True):
+                    for i in range(len(self.current_replay_data[-20:]) - 1):
+                        trail_pos = self.current_replay_data[-20:][i]
+                        next_pos = self.current_replay_data[-20:][i + 1]
+                        arcade.draw_line(trail_pos[0], trail_pos[1], next_pos[0], next_pos[1], arcade.color.RED, 3)
+
             arcade.draw_lbwh_rectangle_filled(self.window.width / 4, 0, (self.window.width / 2), self.window.height / 20, arcade.color.SKY_BLUE)
             arcade.draw_lbwh_rectangle_filled(self.window.width / 4, 0, (self.window.width / 2) * (self.warmth / 100), self.window.height / 20, arcade.color.RED)
 
-        self.camera_shake.readjust_camera()
+            self.camera_shake.readjust_camera()
 
         self.ui.draw()
 
@@ -268,19 +296,37 @@ class Game(arcade.gui.UIView):
         if self.won or self.paused:
             return
         
+        if self.settings.get("snowflakes", True):
+            if time.perf_counter() - self.last_snowflake_spawn >= SNOWFLAKE_SPAWN_DELAY:
+                snowflake = arcade.SpriteCircle(5, arcade.color.LIGHT_BLUE)
+                snowflake.center_x = random.randint(5, self.window.width - 5)
+                snowflake.center_y = self.window.height - 10
+
+                snowflake.y_direction = -random.uniform(30, 60)
+                snowflake.x_direction = random.uniform(-15, 15)
+
+                self.snowflakes.append(snowflake)
+                self.last_snowflake_spawn = time.perf_counter()
+
+            for snowflake in self.snowflakes:
+                snowflake.center_y += snowflake.y_direction * delta_time
+                snowflake.center_x += snowflake.x_direction * delta_time
+
+                if snowflake.center_y < -10:
+                    self.snowflakes.remove(snowflake)
+
         hit_list = self.physics_engine.update()
         self.center_camera_to_player()
         self.camera_shake.update(delta_time)
 
         if self.player.collides_with_list(self.scene["end"]):
             end_time = round(time.perf_counter() - self.start - self.pause_time, 4)
-            
-            if self.no_besttime or end_time < self.best_time:
+                        
+            if self.no_besttime or end_time <= self.best_time:
                 self.best_time = end_time
                 self.update_data_file(with_replay=True)
 
             self.won_time = end_time
-            
             self.reset(True)
             return
 
@@ -305,7 +351,7 @@ class Game(arcade.gui.UIView):
             self.collected_trees.append(tree)
             self.scene["trees"].remove(tree)
 
-            self.warmth = self.clamp(self.warmth + 35, 0, 100)
+            self.warmth = self.clamp(self.warmth + 20, 0, 100)
 
         for checkpoint in self.player.collides_with_list(self.scene["checkpoints"]):
             if checkpoint not in self.checkpoints_hit:
@@ -401,6 +447,11 @@ class Game(arcade.gui.UIView):
                 y_moving_wall.y_movement = 0
                 y_moving_wall.y_direction *= -1
 
+        if self.scene._name_mapping.get("falling_spikes"):
+            for falling_spike in self.scene["falling_spikes"]:
+                if abs(self.player.rect.distance_from_bounds(falling_spike.position)) < 100:
+                    falling_spike.change_y = -GRAVITY * 3
+
         if time.perf_counter() - self.last_replay_snapshot >= REPLAY_DELAY:
             self.last_replay_snapshot = time.perf_counter()
             self.current_replay_data.append([self.player.center_x, self.player.center_y])
@@ -423,9 +474,9 @@ class Game(arcade.gui.UIView):
                 f"{self.level_num}_best_time": self.best_time,
                 f"{self.level_num}_tries": self.tries
             })
-            
+                        
             if with_replay and self.current_replay_data:
-                data_dict["best_replay"] = self.current_replay_data
+                data_dict[f"{self.level_num}_best_replay"] = self.current_replay_data
 
             file.write(json.dumps(data_dict, indent=4))
 
@@ -440,11 +491,11 @@ class Game(arcade.gui.UIView):
         self.pause_box.add(arcade.gui.UILabel("Paused", font_size=28, text_color=arcade.color.BLACK))
         self.pause_box.add(arcade.gui.UISpace(height=self.window.height * 0.025))
 
-        restart_button = self.pause_box.add(arcade.gui.UITextureButton(texture=button_texture, texture_hovered=button_hovered_texture, text='Restart', style=button_style, width=self.window.width * 0.25, height=self.window.height * 0.1))
-        restart_button.on_click = lambda event: self.reset(full=True)
-
         resume_button = self.pause_box.add(arcade.gui.UITextureButton(texture=button_texture, texture_hovered=button_hovered_texture, text='Resume', style=button_style, width=self.window.width * 0.25, height=self.window.height * 0.1))
         resume_button.on_click = lambda event: self.disable_pause_menu()
+
+        restart_button = self.pause_box.add(arcade.gui.UITextureButton(texture=button_texture, texture_hovered=button_hovered_texture, text='Restart', style=button_style, width=self.window.width * 0.25, height=self.window.height * 0.1))
+        restart_button.on_click = lambda event: self.reset(full=True)
 
         exit_button = self.pause_box.add(arcade.gui.UITextureButton(texture=button_texture, texture_hovered=button_hovered_texture, text='Exit', style=button_style, width=self.window.width * 0.25, height=self.window.height * 0.1))
         exit_button.on_click = lambda event: self.main_exit()

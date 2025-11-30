@@ -16,11 +16,16 @@ class LevelSelector(arcade.gui.UIView):
     def on_show_view(self):
         super().on_show_view()
         
+        self.back_button = arcade.gui.UITextureButton(texture=button_texture, texture_hovered=button_hovered_texture, text='<--', style=button_style, width=100, height=65)
+        self.back_button.on_click = lambda event: self.main_exit()
+        self.anchor.add(self.back_button, anchor_x="left", anchor_y="top", align_x=10, align_y=-10)
+
         self.box.add(arcade.gui.UILabel(text="Level Selector", font_size=28))
 
         for n in range(AVAILABLE_LEVELS):
-            button = self.box.add(arcade.gui.UITextureButton(text=f"Level {n + 1}", width=self.window.width / 2, height=self.window.height / 10, texture=button_texture, texture_hovered=button_hovered_texture, style=button_style))
-            button.on_click = lambda event, n=n: self.play_level(n + 1)
+            n = n + 1
+            button = self.box.add(arcade.gui.UITextureButton(text=f"Level {n}", width=self.window.width / 2, height=self.window.height / 10, texture=button_texture, texture_hovered=button_hovered_texture, style=button_style))
+            button.on_click = lambda event, n=n: self.play_level(n)
 
     def play_level(self, n):
         from game.play import Game

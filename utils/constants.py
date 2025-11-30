@@ -3,6 +3,7 @@ from arcade.types import Color
 from arcade.gui.widgets.buttons import UITextureButtonStyle, UIFlatButtonStyle
 from arcade.gui.widgets.slider import UISliderStyle
 
+SNOWFLAKE_SPAWN_DELAY = 0.05
 FOLLOW_DECAY_CONST = 0.3
 GRAVITY = 1.5
 PLAYER_JUMP_COOLDOWN = 0.25
@@ -49,6 +50,8 @@ settings = {
         "Discord RPC": {"type": "bool", "config_key": "discord_rpc", "default": True},
         "Hitboxes": {"type": "bool", "config_key": "hitboxes", "default": False},
         "Replays": {"type": "bool", "config_key": "replays", "default": True},
+        "Trail": {"type": "bool", "config_key": "trail", "default": True},
+        "Snowflakes": {"type": "bool", "config_key": "snowflakes", "default": True},
     },
     "Credits": {}
 }

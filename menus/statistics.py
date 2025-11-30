@@ -17,18 +17,21 @@ class Statistics(arcade.gui.UIView):
                 self.data = json.load(file)
         else:
             self.data = {
-                f"{level_num}_best_time": 9999
+                f"{level_num + 1}_best_time": 9999
                 for level_num in range(AVAILABLE_LEVELS)
             }
             
             self.data.update({
-                f"{level_num}_tries": 0
+                f"{level_num + 1}_tries": 0
                 for level_num in range(AVAILABLE_LEVELS)
             })
 
-            self.data["best_replay"] = []
+            self.data.update({
+                f"{level_num + 1}_best_replay": []
+                for level_num in range(AVAILABLE_LEVELS)
+            })
 
-        self.total_tries = sum([self.data[f"{level_num}_tries"] for level_num in range(AVAILABLE_LEVELS)])
+        self.total_tries = sum([self.data[f"{level_num + 1}_tries"] for level_num in range(AVAILABLE_LEVELS)])
 
     def on_show_view(self):
         super().on_show_view()
@@ -43,8 +46,8 @@ class Statistics(arcade.gui.UIView):
 
         for level_num in range(AVAILABLE_LEVELS):
             self.box.add(arcade.gui.UILabel(f"Level {level_num + 1}", font_size=32))
-            self.box.add(arcade.gui.UILabel(f"High Score: {self.data[f'{level_num}_best_time']}", font_size=24))
-            self.box.add(arcade.gui.UILabel(f"Tries: {self.data[f'{level_num}_tries']}", font_size=24))
+            self.box.add(arcade.gui.UILabel(f"High Score: {self.data[f'{level_num + 1}_best_time'] if self.data[f'{level_num + 1}_best_time'] != 9999 else 'Not beaten yet'}", font_size=24))
+            self.box.add(arcade.gui.UILabel(f"Tries: {self.data[f'{level_num + 1}_tries']}", font_size=24))
             self.box.add(arcade.gui.UISpace(height=self.window.height / 15))
 
         self.box.add(arcade.gui.UILabel(f"Total", font_size=32))
