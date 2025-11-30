@@ -55,6 +55,7 @@ class Game(arcade.gui.UIView):
         self.last_jump = time.perf_counter()
         self.start = time.perf_counter()
         self.restart_start = time.perf_counter()
+        self.last_camera_shake = time.perf_counter()
 
         self.checkpoints_hit = set()
         self.collected_trees = []
@@ -90,7 +91,7 @@ class Game(arcade.gui.UIView):
                 for level_num in range(AVAILABLE_LEVELS)
             })
 
-            self.data["replays"] = []
+            self.data["best_replay"] = []
 
         self.best_time = self.data.get(f"{self.level_num}_best_time", 9999)
         self.tries = self.data.get("tries", 1)
@@ -102,15 +103,13 @@ class Game(arcade.gui.UIView):
 
         self.scene.add_sprite("Player", self.player)
 
-        self.replays = self.data.get("replays", []).copy() if self.settings.get("replays", True) else []
-        self.replay_players = []
-        self.replay_indices = [0] * len(self.replays)
+        self.best_replay = self.data.get("best_replay", []).copy() if self.settings.get("replays", True) else []
+        self.replay_index = 0
 
-        if self.replays:
-            for n, replay in enumerate(self.replays):
-                self.replay_players.append(arcade.TextureAnimationSprite(animation=player_still_animation, center_x=replay[0][0], center_y=replay[0][1], alpha=128))
-                self.replay_players[-1].color = arcade.color.GRAY
-                self.scene.add_sprite(f"ReplayPlayer{n}", self.replay_players[-1])
+        if self.best_replay:
+            self.replay_player = arcade.TextureAnimationSprite(animation=player_still_animation, center_x=self.best_replay[0][0], center_y=self.best_replay[0][1], alpha=128)
+            self.replay_player.color = arcade.color.GRAY
+            self.scene.add_sprite(f"ReplayPlayer", self.replay_player)
 
         if self.settings.get("sfx", True):        
             self.freeze_player = freeze_sound.play(loop=True, volume=self.settings.get("sfx_volume", 100) / 100)
@@ -124,7 +123,7 @@ class Game(arcade.gui.UIView):
         self.info_label = self.anchor.add(arcade.gui.UILabel(text=f"Time took: 0s Best Time: {self.best_time}s Trees: 0 Tries: {self.tries}", font_size=20), anchor_x="center", anchor_y="top")
 
     def reset(self, reached_end=False):
-        self.camera_shake.start()
+        self.shake_camera()
         
         if not reached_end:
             self.warmth = 50
@@ -212,6 +211,11 @@ class Game(arcade.gui.UIView):
         if self.player.animation != animation:
             self.player.animation = animation
 
+    def shake_camera(self):
+        if time.perf_counter() - self.last_camera_shake >= 0.25:
+            self.camera_shake.start()
+            self.last_camera_shake = time.perf_counter()
+
     def on_update(self, delta_time: float):
         if self.won:
             return
@@ -231,6 +235,7 @@ class Game(arcade.gui.UIView):
             
             if self.no_besttime or end_time < self.best_time:
                 self.best_time = end_time
+                self.update_data_file(with_replay=True)
 
             self.won_time = end_time
             
@@ -246,11 +251,11 @@ class Game(arcade.gui.UIView):
             self.reset()
 
         if self.player.center_x + self.player.width / 2 < 0:
-            self.camera_shake.start()
+            self.shake_camera()
             self.player.center_x = self.player.width / 2
 
         if self.player.center_x - self.player.width / 2 > tilemaps[self.level_num].width * GRID_PIXEL_SIZE:
-            self.camera_shake.start()
+            self.shake_camera()
             self.player.center_x = (tilemaps[self.level_num].width * GRID_PIXEL_SIZE) - self.player.width / 2
 
         for tree in self.player.collides_with_list(self.scene["trees"]):
@@ -302,7 +307,7 @@ class Game(arcade.gui.UIView):
         self.warmth = self.clamp(self.warmth - 0.15, 0, 100)
 
         if self.warmth < 40:
-            self.camera_shake.start()
+            self.shake_camera()
             if self.settings.get("sfx", True) and not self.freeze_player.playing:
                 self.freeze_player.play()
         else:
@@ -318,7 +323,7 @@ class Game(arcade.gui.UIView):
 
         for level_text in self.level_texts:
             if level_text.change_to_when_hit and self.player.rect.intersection(level_text.rect):
-                self.camera_shake.start()
+                self.shake_camera()
                 level_text.text = level_text.change_to_when_hit
 
         self.player.update_animation()
@@ -327,25 +332,15 @@ class Game(arcade.gui.UIView):
             self.last_replay_snapshot = time.perf_counter()
             self.current_replay_data.append([self.player.center_x, self.player.center_y])
 
-            if self.replays:
-                replays_to_remove = []
-
-                for n, replay in enumerate(self.replays):
-                    if replay is None:
-                        continue
-
-                    self.replay_indices[n] += 1
-
-                    if self.replay_indices[n] < len(replay):
-                        self.replay_players[n].center_x, self.replay_players[n].center_y = replay[self.replay_indices[n]]
-                    else:
-                        replays_to_remove.append(n)
-
-                for replay_to_remove in replays_to_remove:
-                    self.replays[replay_to_remove] = None
-                    self.replay_players[replay_to_remove] = None
-                    if f"ReplayPlayer{replay_to_remove}" in self.scene._name_mapping:
-                        self.scene.remove_sprite_list_by_name(f"ReplayPlayer{replay_to_remove}")
+            if self.best_replay:
+                self.replay_index += 1
+                if self.replay_index < len(self.best_replay) - 1:
+                    self.replay_player.center_x, self.replay_player.center_y = self.best_replay[self.replay_index]
+                else:
+                    self.best_replay = None
+                    self.replay_player = None
+                    if f"ReplayPlayer" in self.scene._name_mapping:
+                        self.scene.remove_sprite_list_by_name(f"ReplayPlayer")
 
     def update_data_file(self, with_replay=False):
         with open("data.json", "w") as file:
@@ -356,9 +351,8 @@ class Game(arcade.gui.UIView):
                 f"{self.level_num}_tries": self.tries
             })
             
-            if with_replay:
-                if self.current_replay_data:
-                    data_dict["replays"].append(self.current_replay_data)
+            if with_replay and self.current_replay_data:
+                data_dict["best_replay"] = self.current_replay_data
 
             file.write(json.dumps(data_dict, indent=4))
 
@@ -367,6 +361,5 @@ class Game(arcade.gui.UIView):
             self.main_exit()
 
     def main_exit(self):
-        self.update_data_file(with_replay=True)
         from menus.main import Main
         self.window.show_view(Main(self.pypresence_client))

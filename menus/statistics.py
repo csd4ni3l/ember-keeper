@@ -26,7 +26,7 @@ class Statistics(arcade.gui.UIView):
                 for level_num in range(AVAILABLE_LEVELS)
             })
 
-            self.data["replays"] = []
+            self.data["best_replay"] = []
 
         self.total_tries = sum([self.data[f"{level_num}_tries"] for level_num in range(AVAILABLE_LEVELS)])
 
