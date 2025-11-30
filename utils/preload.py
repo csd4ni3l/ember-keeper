@@ -21,4 +21,4 @@ player_duck_animation = animation_from([os.path.join(_assets_dir, 'graphics', 'K
 background_sound = arcade.Sound(os.path.join(_assets_dir, "sound", "background.mp3"))
 freeze_sound = arcade.Sound(os.path.join(_assets_dir, "sound", "freeze.wav"))
 
-tilemaps = [arcade.load_tilemap(os.path.join(_assets_dir, "levels", tilemap)) for tilemap in os.listdir(os.path.join(_assets_dir, "levels"))]
+tilemaps = {int(tilemap.split(".tmx")[0]): arcade.load_tilemap(os.path.join(_assets_dir, "levels", tilemap)) for tilemap in os.listdir(os.path.join(_assets_dir, "levels")) if tilemap.split(".tmx")[0].isnumeric()}

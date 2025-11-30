@@ -1,6 +1,6 @@
 import arcade, arcade.gui, json, time, os
 
-from utils.constants import FOLLOW_DECAY_CONST, GRAVITY, PLAYER_MOVEMENT_SPEED, PLAYER_JUMP_SPEED, GRID_PIXEL_SIZE, PLAYER_JUMP_COOLDOWN, LEFT_RIGHT_DIAGONAL_ID, RIGHT_LEFT_DIAGONAL_ID, AVAILABLE_LEVELS, RESTART_DELAY, button_style, REPLAY_DELAY
+from utils.constants import FOLLOW_DECAY_CONST, GRAVITY, PLAYER_MOVEMENT_SPEED, PLAYER_JUMP_SPEED, GRID_PIXEL_SIZE, PLAYER_JUMP_COOLDOWN, LEFT_RIGHT_DIAGONAL_ID, RIGHT_LEFT_DIAGONAL_ID, AVAILABLE_LEVELS, RESTART_DELAY, button_style, REPLAY_DELAY, menu_background_color
 from utils.preload import tilemaps, player_still_animation, player_jump_animation, player_walk_animation, freeze_sound, background_sound, button_texture, button_hovered_texture
 
 class Game(arcade.gui.UIView):
@@ -37,7 +37,8 @@ class Game(arcade.gui.UIView):
 
         self.physics_engine = arcade.PhysicsEnginePlatformer(
             self.player, gravity_constant=GRAVITY,
-            walls=[self.scene["walls"], self.scene["ice"]]
+            walls=[self.scene["walls"], self.scene["ice"]],
+            platforms=[self.scene["x_moving_walls"], self.scene["y_moving_walls"]],
         )
 
         self.camera_shake = arcade.camera.grips.ScreenShake2D(
@@ -48,7 +49,7 @@ class Game(arcade.gui.UIView):
             shake_frequency=10.0,                                                      
         )
 
-        self.warmth = 50
+        self.warmth = 65
         self.trees = 0
         self.direction = "right"
 
@@ -66,7 +67,11 @@ class Game(arcade.gui.UIView):
         self.restarting = False
 
         self.won = False
+        self.paused = False
         self.won_time = None
+
+        self.pause_time = 0
+        self.pause_start = time.perf_counter()
 
         self.level_texts = []
 
@@ -117,16 +122,54 @@ class Game(arcade.gui.UIView):
 
             self.background_player = background_sound.play(loop=True, volume=self.settings.get("sfx_volume", 100) / 100)
 
+        for x_moving_wall in self.scene["x_moving_walls"]:
+            x_moving_wall.x_movement = 0
+            x_moving_wall.x_direction = 1
+
+        for y_moving_wall in self.scene["y_moving_walls"]:
+            y_moving_wall.y_movement = 0
+            y_moving_wall.y_direction = -1
+
     def on_show_view(self):
         super().on_show_view()
 
         self.info_label = self.anchor.add(arcade.gui.UILabel(text=f"Time took: 0s Best Time: {self.best_time}s Trees: 0 Tries: {self.tries}", font_size=20), anchor_x="center", anchor_y="top")
 
-    def reset(self, reached_end=False):
+    def reset(self, reached_end=False, full=False):
+        if full:
+            self.disable_pause_menu()
+
+            self.warmth = 65
+            self.trees = 0
+            self.direction = "right"
+
+            self.last_jump = time.perf_counter()
+            self.start = time.perf_counter()
+            self.restart_start = time.perf_counter()
+            self.last_camera_shake = time.perf_counter()
+
+            self.checkpoints_hit = set()
+            self.collected_trees = []
+
+            self.current_replay_data = []
+            self.last_replay_snapshot = time.perf_counter()
+
+            self.restarting = False
+
+            self.won = False
+            self.paused = False
+            self.won_time = None
+
+            self.spawn_position = tilemaps[self.level_num].object_lists["spawn"][0].shape
+            self.player.position = self.spawn_position
+            self.player.change_x, self.player.change_y = 0, 0
+
+            return
+
         self.shake_camera()
         
         if not reached_end:
-            self.warmth = 50
+            self.warmth = 65
             self.trees = 0
             
             self.player.change_x, self.player.change_y = 0, 0
@@ -144,9 +187,9 @@ class Game(arcade.gui.UIView):
             if self.no_besttime:
                 self.no_besttime = False
 
-            self.anchor.add(arcade.gui.UILabel(text=f"Level Complete! Time: {self.won_time}s\nBest Time: {self.best_time}s", multiline=True, font_size=30), anchor_x="center", anchor_y="center")
+            self.anchor.add(arcade.gui.UILabel(text=f"Level Complete!\nTime: {self.won_time}s\nBest Time: {self.best_time}s", multiline=True, font_size=30), anchor_x="center", anchor_y="center")
             
-            self.back_button = arcade.gui.UITextureButton(texture=button_texture, texture_hovered=button_hovered_texture, text='<--', style=button_style, width=100, height=50)
+            self.back_button = arcade.gui.UITextureButton(texture=button_texture, texture_hovered=button_hovered_texture, text='<--', style=button_style, width=100, height=65)
             self.back_button.on_click = lambda event: self.main_exit()
             self.anchor.add(self.back_button, anchor_x="left", anchor_y="top", align_x=10, align_y=-10)
             
@@ -157,6 +200,11 @@ class Game(arcade.gui.UIView):
 
         for level_text in self.level_texts:
             level_text.text = level_text.original_text
+
+        for tree in self.collected_trees:
+            self.scene["trees"].append(tree)
+
+        self.collected_trees = []
 
         self.update_data_file()
 
@@ -217,21 +265,15 @@ class Game(arcade.gui.UIView):
             self.last_camera_shake = time.perf_counter()
 
     def on_update(self, delta_time: float):
-        if self.won:
+        if self.won or self.paused:
             return
-
-        if self.restarting:
-            if time.perf_counter() - self.restart_start >= RESTART_DELAY:
-                self.restarting = False
-            else:
-                return
         
         hit_list = self.physics_engine.update()
         self.center_camera_to_player()
         self.camera_shake.update(delta_time)
 
         if self.player.collides_with_list(self.scene["end"]):
-            end_time = round(time.perf_counter() - self.start, 4)
+            end_time = round(time.perf_counter() - self.start - self.pause_time, 4)
             
             if self.no_besttime or end_time < self.best_time:
                 self.best_time = end_time
@@ -243,9 +285,9 @@ class Game(arcade.gui.UIView):
             return
 
         if self.no_besttime:
-            self.best_time = round(time.perf_counter() - self.start, 4)
+            self.best_time = round(time.perf_counter() - self.start - self.pause_time, 4)
 
-        self.info_label.text = f"Time took: {round(time.perf_counter() - self.start, 4)}s Best Time: {self.best_time}s Trees: {self.trees} Tries: {self.tries}"
+        self.info_label.text = f"Time took: {round(time.perf_counter() - self.start - self.pause_time, 4)}s Best Time: {self.best_time}s Trees: {self.trees} Tries: {self.tries}"
 
         if self.warmth <= 0 or self.player.collides_with_list(self.scene["spikes"]) or self.player.center_y < 0:
             self.reset()
@@ -270,6 +312,12 @@ class Game(arcade.gui.UIView):
                 self.scene["checkpoints"].remove(checkpoint)
                 self.checkpoints_hit.add(checkpoint)
                 self.spawn_position = checkpoint.position + arcade.math.Vec2(-GRID_PIXEL_SIZE / 4, GRID_PIXEL_SIZE)
+
+        if self.restarting: # restart here so player doesn't move, but physics engine still updates
+            if time.perf_counter() - self.restart_start >= RESTART_DELAY:
+                self.restarting = False
+            else:
+                return
 
         moved = False
         ice_touch = any([ice_sprite in hit_list for ice_sprite in self.scene["ice"]]) and self.physics_engine.can_jump()
@@ -314,6 +362,15 @@ class Game(arcade.gui.UIView):
             if self.settings.get("sfx", True):
                 self.freeze_player.pause()
 
+        if self.warmth > 50:
+            arcade.set_background_color(menu_background_color)
+        elif self.warmth > 35:
+            arcade.set_background_color(arcade.color.DARK_BLUE)
+        elif self.warmth > 15:
+            arcade.set_background_color(arcade.color.BLUE)
+        else:
+            arcade.set_background_color(arcade.color.LIGHT_BLUE)
+
         if self.player.change_y > 0:
             self.change_player_animation(player_jump_animation)
         elif abs(self.player.change_x) > PLAYER_MOVEMENT_SPEED * 0.3:
@@ -327,6 +384,22 @@ class Game(arcade.gui.UIView):
                 level_text.text = level_text.change_to_when_hit
 
         self.player.update_animation()
+
+        for x_moving_wall in self.scene["x_moving_walls"]:
+            x_moving_wall.center_x += 3 * x_moving_wall.x_direction
+            x_moving_wall.x_movement += 3
+
+            if x_moving_wall.x_movement > 140:
+                x_moving_wall.x_movement = 0
+                x_moving_wall.x_direction *= -1
+
+        for y_moving_wall in self.scene["y_moving_walls"]:
+            y_moving_wall.center_y += 3 * y_moving_wall.y_direction
+            y_moving_wall.y_movement += 3
+
+            if y_moving_wall.y_movement > 140:
+                y_moving_wall.y_movement = 0
+                y_moving_wall.y_direction *= -1
 
         if time.perf_counter() - self.last_replay_snapshot >= REPLAY_DELAY:
             self.last_replay_snapshot = time.perf_counter()
@@ -356,10 +429,38 @@ class Game(arcade.gui.UIView):
 
             file.write(json.dumps(data_dict, indent=4))
 
+    def pause_menu(self):
+        self.pause_start = time.perf_counter()
+        
+        self.paused = True
+
+        self.pause_box = self.anchor.add(arcade.gui.UIBoxLayout(align="center", size_hint=(0.3, 0.5), space_between=10).with_background(color=arcade.color.DARK_GRAY), anchor_x="center", anchor_y="center")
+        
+        self.pause_box.add(arcade.gui.UISpace(height=self.window.height * 0.025))
+        self.pause_box.add(arcade.gui.UILabel("Paused", font_size=28, text_color=arcade.color.BLACK))
+        self.pause_box.add(arcade.gui.UISpace(height=self.window.height * 0.025))
+
+        restart_button = self.pause_box.add(arcade.gui.UITextureButton(texture=button_texture, texture_hovered=button_hovered_texture, text='Restart', style=button_style, width=self.window.width * 0.25, height=self.window.height * 0.1))
+        restart_button.on_click = lambda event: self.reset(full=True)
+
+        resume_button = self.pause_box.add(arcade.gui.UITextureButton(texture=button_texture, texture_hovered=button_hovered_texture, text='Resume', style=button_style, width=self.window.width * 0.25, height=self.window.height * 0.1))
+        resume_button.on_click = lambda event: self.disable_pause_menu()
+
+        exit_button = self.pause_box.add(arcade.gui.UITextureButton(texture=button_texture, texture_hovered=button_hovered_texture, text='Exit', style=button_style, width=self.window.width * 0.25, height=self.window.height * 0.1))
+        exit_button.on_click = lambda event: self.main_exit()
+
+    def disable_pause_menu(self):
+        self.pause_time += time.perf_counter() - self.pause_start
+
+        self.paused = False
+        self.anchor.remove(self.pause_box)
+
     def on_key_press(self, symbol, modifiers):
         if symbol == arcade.key.ESCAPE:
-            self.main_exit()
+            self.pause_menu()
 
     def main_exit(self):
+        arcade.set_background_color(menu_background_color)
+        
         from menus.main import Main
         self.window.show_view(Main(self.pypresence_client))

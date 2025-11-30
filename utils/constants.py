@@ -16,7 +16,7 @@ REPLAY_DELAY = 1 / 20
 LEFT_RIGHT_DIAGONAL_ID = 6
 RIGHT_LEFT_DIAGONAL_ID = 7
 
-AVAILABLE_LEVELS = 1
+AVAILABLE_LEVELS = 2
 
 menu_background_color = (30, 30, 47)
 log_dir = 'logs'

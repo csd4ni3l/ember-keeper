@@ -20,7 +20,7 @@ class LevelSelector(arcade.gui.UIView):
 
         for n in range(AVAILABLE_LEVELS):
             button = self.box.add(arcade.gui.UITextureButton(text=f"Level {n + 1}", width=self.window.width / 2, height=self.window.height / 10, texture=button_texture, texture_hovered=button_hovered_texture, style=button_style))
-            button.on_click = lambda event, n=n: self.play_level(n)
+            button.on_click = lambda event, n=n: self.play_level(n + 1)
 
     def play_level(self, n):
         from game.play import Game
