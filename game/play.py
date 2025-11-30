@@ -90,16 +90,16 @@ class Game(arcade.gui.UIView):
         else:
             self.data = {
                 f"{level_num + 1}_best_time": 9999
-                for level_num + 1 in range(AVAILABLE_LEVELS)
+                for level_num in range(AVAILABLE_LEVELS)
             }
             self.data.update({
                 f"{level_num + 1}_tries": 0
-                for level_num + 1 in range(AVAILABLE_LEVELS)
+                for level_num in range(AVAILABLE_LEVELS)
             })
 
             self.data.update({
                 f"{level_num + 1}_best_replay": []
-                for level_num + 1 in range(AVAILABLE_LEVELS)
+                for level_num in range(AVAILABLE_LEVELS)
             })
 
         if self.settings.get("snowflakes", True):
