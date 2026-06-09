@@ -4,5 +4,3 @@ The game is locked at 60 FPS since every interaction depends on that and i am la
 The game can be/is intended to be speedrunned and there is an option for hitboxes as well.
 
 The game includes lots of funny texts and traps i made.
-
-[![Demo Video](https://img.youtube.com/vi/clQT379Vs80/hqdefault.jpg)](https://youtu.be/clQT379Vs80)
