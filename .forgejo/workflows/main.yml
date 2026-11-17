@@ -54,7 +54,17 @@ jobs:
         run: ccache --show-stats
       - name: Zip
         run: |
-          zip -j ember_keeper_linux.zip build/EmberKeeper.bin
+          set -euo pipefail
+          # The onefile artifact has no extension; Nuitka only keeps a .bin copy
+          # inside the intermediate <script>.dist directory, which is not shipped.
+          BIN="build/EmberKeeper"
+          if [ ! -f "$BIN" ]; then
+            BIN=$(find build -maxdepth 1 -type f \( -name "EmberKeeper" -o -name "EmberKeeper.bin" \) | head -n 1)
+          fi
+          test -n "$BIN" && test -f "$BIN"
+          [ "$BIN" = "build/EmberKeeper" ] || mv -- "$BIN" "build/EmberKeeper"
+          zip -j ember_keeper_linux.zip "build/EmberKeeper"
+          rm -rf build/*.dist build/*.build
       - name: Release
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
