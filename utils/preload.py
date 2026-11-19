@@ -18,7 +18,7 @@ player_still_animation = animation_from([os.path.join(_assets_dir, 'graphics', '
 player_jump_animation = animation_from([os.path.join(_assets_dir, 'graphics', 'KenneyNewPlatformerPack', 'character', 'character_green_jump.png')])
 player_duck_animation = animation_from([os.path.join(_assets_dir, 'graphics', 'KenneyNewPlatformerPack', 'character', 'character_green_duck.png')])
 
-background_sound = arcade.Sound(os.path.join(_assets_dir, "sound", "background.mp3"))
+background_sound = arcade.Sound(os.path.join(_assets_dir, "sound", "background.wav"))
 freeze_sound = arcade.Sound(os.path.join(_assets_dir, "sound", "freeze.wav"))
 
 tilemaps = {int(tilemap.split(".tmx")[0]): arcade.load_tilemap(os.path.join(_assets_dir, "levels", tilemap)) for tilemap in os.listdir(os.path.join(_assets_dir, "levels")) if tilemap.split(".tmx")[0].isnumeric()}
